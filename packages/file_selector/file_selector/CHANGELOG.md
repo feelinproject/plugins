@@ -1,3 +1,12 @@
+## 0.9.2+1
+
+* Changes XTypeGroup initialization from final to const.
+* Updates minimum Flutter version to 2.10.
+
+## 0.9.2
+
+* Adds an endorsed iOS implementation.
+
 ## 0.9.1
 
 * Adds an endorsed Linux implementation.
