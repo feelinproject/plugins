@@ -22,9 +22,13 @@ flutter:
 
 dependencies:
   camera_android:
-    path: ../camera_android
+    git:
+      url: https://github.com/feelinproject/plugins.git
+      path: packages/camera/camera_android
   camera_avfoundation:
-    path: ../camera_avfoundation
+    git:
+      url: https://github.com/feelinproject/plugins.git
+      path: packages/camera/camera_avfoundation
   camera_platform_interface: ^2.2.0
   camera_web: ^0.3.0
   flutter:
