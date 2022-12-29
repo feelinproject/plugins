@@ -14,6 +14,7 @@ import io.flutter.plugins.camera.CameraRegionUtils;
 import io.flutter.plugins.camera.features.CameraFeature;
 import io.flutter.plugins.camera.features.Point;
 import io.flutter.plugins.camera.features.sensororientation.SensorOrientationFeature;
+import java.util.Arrays.*;
 
 /** Exposure point controls where in the frame exposure metering will come from. */
 public class ExposurePointFeature extends CameraFeature<Point> {
