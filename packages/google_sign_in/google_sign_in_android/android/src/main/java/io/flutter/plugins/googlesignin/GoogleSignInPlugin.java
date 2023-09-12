@@ -140,8 +140,15 @@ public class GoogleSignInPlugin implements MethodCallHandler, FlutterPlugin, Act
         String hostedDomain = call.argument("hostedDomain");
         String clientId = call.argument("clientId");
         String serverClientId = call.argument("serverClientId");
+        boolean forceCodeForRefreshToken = call.argument("forceCodeForRefreshToken");
         delegate.init(
-            result, signInOption, requestedScopes, hostedDomain, clientId, serverClientId);
+            result,
+            signInOption,
+            requestedScopes,
+            hostedDomain,
+            clientId,
+            serverClientId,
+            forceCodeForRefreshToken);
         break;
 
       case METHOD_SIGN_IN_SILENTLY:
@@ -198,7 +205,8 @@ public class GoogleSignInPlugin implements MethodCallHandler, FlutterPlugin, Act
         List<String> requestedScopes,
         String hostedDomain,
         String clientId,
-        String serverClientId);
+        String serverClientId,
+        boolean forceCodeForRefreshToken);
 
     /**
      * Returns the account information for the user who is signed in to this app. If no user is
@@ -326,7 +334,8 @@ public class GoogleSignInPlugin implements MethodCallHandler, FlutterPlugin, Act
         List<String> requestedScopes,
         String hostedDomain,
         String clientId,
-        String serverClientId) {
+        String serverClientId,
+        boolean forceCodeForRefreshToken) {
       try {
         GoogleSignInOptions.Builder optionsBuilder;
 
@@ -347,16 +356,12 @@ public class GoogleSignInPlugin implements MethodCallHandler, FlutterPlugin, Act
         // Android apps are identified by their package name and the SHA-1 of their signing key.
         // https://developers.google.com/android/guides/client-auth
         // https://developers.google.com/identity/sign-in/android/start#configure-a-google-api-project
-        if (!Strings.isNullOrEmpty(clientId)) {
-          if (Strings.isNullOrEmpty(serverClientId)) {
-            Log.w(
-                "google_sing_in",
-                "clientId is not supported on Android and is interpreted as serverClientId."
-                    + "Use serverClientId instead to suppress this warning.");
-            serverClientId = clientId;
-          } else {
-            Log.w("google_sing_in", "clientId is not supported on Android and is ignored.");
-          }
+        if (!Strings.isNullOrEmpty(clientId) && Strings.isNullOrEmpty(serverClientId)) {
+          Log.w(
+              "google_sign_in",
+              "clientId is not supported on Android and is interpreted as serverClientId. "
+                  + "Use serverClientId instead to suppress this warning.");
+          serverClientId = clientId;
         }
 
         if (Strings.isNullOrEmpty(serverClientId)) {
@@ -374,7 +379,7 @@ public class GoogleSignInPlugin implements MethodCallHandler, FlutterPlugin, Act
         }
         if (!Strings.isNullOrEmpty(serverClientId)) {
           optionsBuilder.requestIdToken(serverClientId);
-          optionsBuilder.requestServerAuthCode(serverClientId);
+          optionsBuilder.requestServerAuthCode(serverClientId, forceCodeForRefreshToken);
         }
         for (String scope : requestedScopes) {
           optionsBuilder.requestScopes(new Scope(scope));
@@ -399,9 +404,9 @@ public class GoogleSignInPlugin implements MethodCallHandler, FlutterPlugin, Act
     public void signInSilently(Result result) {
       checkAndSetPendingOperation(METHOD_SIGN_IN_SILENTLY, result);
       Task<GoogleSignInAccount> task = signInClient.silentSignIn();
-      if (task.isSuccessful()) {
+      if (task.isComplete()) {
         // There's immediate result available.
-        onSignInAccount(task.getResult());
+        onSignInResult(task);
       } else {
         task.addOnCompleteListener(
             new OnCompleteListener<GoogleSignInAccount>() {
@@ -511,7 +516,7 @@ public class GoogleSignInPlugin implements MethodCallHandler, FlutterPlugin, Act
         GoogleSignInAccount account = completedTask.getResult(ApiException.class);
         onSignInAccount(account);
       } catch (ApiException e) {
-        // Forward all errors and let Dart side decide how to handle.
+        // Forward all errors and let Dart decide how to handle.
         String errorCode = errorCodeForStatus(e.getStatusCode());
         finishWithError(errorCode, e.toString());
       } catch (RuntimeExecutionException e) {
@@ -533,14 +538,20 @@ public class GoogleSignInPlugin implements MethodCallHandler, FlutterPlugin, Act
     }
 
     private String errorCodeForStatus(int statusCode) {
-      if (statusCode == GoogleSignInStatusCodes.SIGN_IN_CANCELLED) {
-        return ERROR_REASON_SIGN_IN_CANCELED;
-      } else if (statusCode == CommonStatusCodes.SIGN_IN_REQUIRED) {
-        return ERROR_REASON_SIGN_IN_REQUIRED;
-      } else if (statusCode == CommonStatusCodes.NETWORK_ERROR) {
-        return ERROR_REASON_NETWORK_ERROR;
-      } else {
-        return ERROR_REASON_SIGN_IN_FAILED;
+      switch (statusCode) {
+        case GoogleSignInStatusCodes.SIGN_IN_CANCELLED:
+          return ERROR_REASON_SIGN_IN_CANCELED;
+        case CommonStatusCodes.SIGN_IN_REQUIRED:
+          return ERROR_REASON_SIGN_IN_REQUIRED;
+        case CommonStatusCodes.NETWORK_ERROR:
+          return ERROR_REASON_NETWORK_ERROR;
+        case GoogleSignInStatusCodes.SIGN_IN_CURRENTLY_IN_PROGRESS:
+        case GoogleSignInStatusCodes.SIGN_IN_FAILED:
+        case CommonStatusCodes.INVALID_ACCOUNT:
+        case CommonStatusCodes.INTERNAL_ERROR:
+          return ERROR_REASON_SIGN_IN_FAILED;
+        default:
+          return ERROR_REASON_SIGN_IN_FAILED;
       }
     }
 

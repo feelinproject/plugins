@@ -1,3 +1,34 @@
+## 6.1.6
+
+* Minor implementation cleanup
+* Updates minimum Flutter version to 3.0.
+
+## 6.1.5
+
+* Updates play-services-auth version to 20.4.1.
+
+## 6.1.4
+
+* Rolls Guava to version 31.1.
+
+## 6.1.3
+
+* Updates play-services-auth version to 20.4.0.
+
+## 6.1.2
+
+* Fixes passing `serverClientId` via the channelled `init` call
+
+## 6.1.1
+
+* Corrects typos in plugin error logs and removes not actionable warnings.
+* Updates minimum Flutter version to 2.10.
+* Updates play-services-auth version to 20.3.0.
+
+## 6.1.0
+
+* Adds override for `GoogleSignIn.initWithParams` to handle new `forceCodeForRefreshToken` parameter.
+
 ## 6.0.1
 
 * Updates gradle version to 7.2.1 on Android.

@@ -46,17 +46,26 @@ typedef void (^FlutterResultAdapter)(NSArray<NSString *> *_Nullable, FlutterErro
 /** Maximum number of images to select. 0 indicates no maximum. */
 @property(nonatomic, assign) int maxImageCount;
 
+/** Whether the image should be picked with full metadata (requires gallery permissions) */
+@property(nonatomic, assign) BOOL requestFullMetadata;
+
 @end
 
 #pragma mark -
 
 /** Methods exposed for unit testing. */
-@interface FLTImagePickerPlugin () <FLTImagePickerApi>
+@interface FLTImagePickerPlugin () <FLTImagePickerApi,
+                                    UINavigationControllerDelegate,
+                                    UIImagePickerControllerDelegate,
+                                    PHPickerViewControllerDelegate,
+                                    UIAdaptivePresentationControllerDelegate>
 
 /**
  * The context of the Flutter method call that is currently being handled, if any.
  */
 @property(strong, nonatomic, nullable) FLTImagePickerMethodCallContext *callContext;
+
+- (UIViewController *)viewControllerWithWindow:(nullable UIWindow *)window;
 
 /**
  * Validates the provided paths list, then sends it via `callContext.result` as the result of the

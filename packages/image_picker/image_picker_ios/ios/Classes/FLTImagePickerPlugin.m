@@ -29,10 +29,7 @@
 
 #pragma mark -
 
-@interface FLTImagePickerPlugin () <UINavigationControllerDelegate,
-                                    UIImagePickerControllerDelegate,
-                                    PHPickerViewControllerDelegate,
-                                    UIAdaptivePresentationControllerDelegate>
+@interface FLTImagePickerPlugin ()
 
 /**
  * The PHPickerViewController instance used to pick multiple
@@ -56,7 +53,7 @@ typedef NS_ENUM(NSInteger, ImagePickerClassType) { UIImagePickerClassType, PHPic
 @implementation FLTImagePickerPlugin
 
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar> *)registrar {
-  FLTImagePickerPlugin *instance = [FLTImagePickerPlugin new];
+  FLTImagePickerPlugin *instance = [[FLTImagePickerPlugin alloc] init];
   FLTImagePickerApiSetup(registrar.messenger, instance);
 }
 
@@ -119,7 +116,11 @@ typedef NS_ENUM(NSInteger, ImagePickerClassType) { UIImagePickerClassType, PHPic
   _pickerViewController.presentationController.delegate = self;
   self.callContext = context;
 
-  [self checkPhotoAuthorizationForAccessLevel];
+  if (context.requestFullMetadata) {
+    [self checkPhotoAuthorizationForAccessLevel];
+  } else {
+    [self showPhotoLibraryWithPHPicker:_pickerViewController];
+  }
 }
 
 - (void)launchUIImagePickerWithSource:(nonnull FLTSourceSpecification *)source
@@ -136,7 +137,16 @@ typedef NS_ENUM(NSInteger, ImagePickerClassType) { UIImagePickerClassType, PHPic
                                              camera:[self cameraDeviceForSource:source]];
       break;
     case FLTSourceTypeGallery:
-      [self checkPhotoAuthorizationWithImagePicker:imagePickerController];
+      if (@available(iOS 11, *)) {
+        if (context.requestFullMetadata) {
+          [self checkPhotoAuthorizationWithImagePicker:imagePickerController];
+        } else {
+          [self showPhotoLibraryWithImagePicker:imagePickerController];
+        }
+      } else {
+        // Prior to iOS 11, accessing gallery requires authorization
+        [self checkPhotoAuthorizationWithImagePicker:imagePickerController];
+      }
       break;
     default:
       [self sendCallResultWithError:[FlutterError errorWithCode:@"invalid_source"
@@ -151,6 +161,7 @@ typedef NS_ENUM(NSInteger, ImagePickerClassType) { UIImagePickerClassType, PHPic
 - (void)pickImageWithSource:(nonnull FLTSourceSpecification *)source
                     maxSize:(nonnull FLTMaxSize *)maxSize
                     quality:(nullable NSNumber *)imageQuality
+               fullMetadata:(NSNumber *)fullMetadata
                  completion:
                      (nonnull void (^)(NSString *_Nullable, FlutterError *_Nullable))completion {
   [self cancelInProgressCall];
@@ -166,6 +177,7 @@ typedef NS_ENUM(NSInteger, ImagePickerClassType) { UIImagePickerClassType, PHPic
   context.maxSize = maxSize;
   context.imageQuality = imageQuality;
   context.maxImageCount = 1;
+  context.requestFullMetadata = [fullMetadata boolValue];
 
   if (source.type == FLTSourceTypeGallery) {  // Capture is not possible with PHPicker
     if (@available(iOS 14, *)) {
@@ -180,12 +192,14 @@ typedef NS_ENUM(NSInteger, ImagePickerClassType) { UIImagePickerClassType, PHPic
 
 - (void)pickMultiImageWithMaxSize:(nonnull FLTMaxSize *)maxSize
                           quality:(nullable NSNumber *)imageQuality
+                     fullMetadata:(NSNumber *)fullMetadata
                        completion:(nonnull void (^)(NSArray<NSString *> *_Nullable,
                                                     FlutterError *_Nullable))completion {
   FLTImagePickerMethodCallContext *context =
       [[FLTImagePickerMethodCallContext alloc] initWithResult:completion];
   context.maxSize = maxSize;
   context.imageQuality = imageQuality;
+  context.requestFullMetadata = [fullMetadata boolValue];
 
   if (@available(iOS 14, *)) {
     [self launchPHPickerWithContext:context];
@@ -351,11 +365,13 @@ typedef NS_ENUM(NSInteger, ImagePickerClassType) { UIImagePickerClassType, PHPic
 }
 
 - (void)checkPhotoAuthorizationForAccessLevel API_AVAILABLE(ios(14)) {
-  PHAuthorizationStatus status = [PHPhotoLibrary authorizationStatus];
+  PHAccessLevel requestedAccessLevel = PHAccessLevelReadWrite;
+  PHAuthorizationStatus status =
+      [PHPhotoLibrary authorizationStatusForAccessLevel:requestedAccessLevel];
   switch (status) {
     case PHAuthorizationStatusNotDetermined: {
       [PHPhotoLibrary
-          requestAuthorizationForAccessLevel:PHAccessLevelReadWrite
+          requestAuthorizationForAccessLevel:requestedAccessLevel
                                      handler:^(PHAuthorizationStatus status) {
                                        dispatch_async(dispatch_get_main_queue(), ^{
                                          if (status == PHAuthorizationStatusAuthorized) {
@@ -461,51 +477,55 @@ typedef NS_ENUM(NSInteger, ImagePickerClassType) { UIImagePickerClassType, PHPic
     [self sendCallResultWithSavedPathList:nil];
     return;
   }
-  dispatch_queue_t backgroundQueue =
-      dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0);
-  dispatch_async(backgroundQueue, ^{
-    NSNumber *maxWidth = self.callContext.maxSize.width;
-    NSNumber *maxHeight = self.callContext.maxSize.height;
-    NSNumber *imageQuality = self.callContext.imageQuality;
-    NSNumber *desiredImageQuality = [self getDesiredImageQuality:imageQuality];
-    NSOperationQueue *operationQueue = [NSOperationQueue new];
-    NSMutableArray *pathList = [self createNSMutableArrayWithSize:results.count];
+  __block NSOperationQueue *saveQueue = [[NSOperationQueue alloc] init];
+  saveQueue.name = @"Flutter Save Image Queue";
+  saveQueue.qualityOfService = NSQualityOfServiceUserInitiated;
 
-    for (int i = 0; i < results.count; i++) {
-      PHPickerResult *result = results[i];
-      FLTPHPickerSaveImageToPathOperation *operation =
-          [[FLTPHPickerSaveImageToPathOperation alloc] initWithResult:result
-                                                            maxHeight:maxHeight
-                                                             maxWidth:maxWidth
-                                                  desiredImageQuality:desiredImageQuality
-                                                       savedPathBlock:^(NSString *savedPath) {
-                                                         pathList[i] = savedPath;
-                                                       }];
-      [operationQueue addOperation:operation];
+  FLTImagePickerMethodCallContext *currentCallContext = self.callContext;
+  NSNumber *maxWidth = currentCallContext.maxSize.width;
+  NSNumber *maxHeight = currentCallContext.maxSize.height;
+  NSNumber *imageQuality = currentCallContext.imageQuality;
+  NSNumber *desiredImageQuality = [self getDesiredImageQuality:imageQuality];
+  BOOL requestFullMetadata = currentCallContext.requestFullMetadata;
+  NSMutableArray *pathList = [[NSMutableArray alloc] initWithCapacity:results.count];
+  __block FlutterError *saveError = nil;
+  __weak typeof(self) weakSelf = self;
+  // This operation will be executed on the main queue after
+  // all selected files have been saved.
+  NSBlockOperation *sendListOperation = [NSBlockOperation blockOperationWithBlock:^{
+    if (saveError != nil) {
+      [weakSelf sendCallResultWithError:saveError];
+    } else {
+      [weakSelf sendCallResultWithSavedPathList:pathList];
     }
-    [operationQueue waitUntilAllOperationsAreFinished];
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [self sendCallResultWithSavedPathList:pathList];
-    });
-  });
-}
+    // Retain queue until here.
+    saveQueue = nil;
+  }];
 
-#pragma mark -
+  [results enumerateObjectsUsingBlock:^(PHPickerResult *result, NSUInteger index, BOOL *stop) {
+    // NSNull means it hasn't saved yet.
+    [pathList addObject:[NSNull null]];
+    FLTPHPickerSaveImageToPathOperation *saveOperation =
+        [[FLTPHPickerSaveImageToPathOperation alloc]
+                 initWithResult:result
+                      maxHeight:maxHeight
+                       maxWidth:maxWidth
+            desiredImageQuality:desiredImageQuality
+                   fullMetadata:requestFullMetadata
+                 savedPathBlock:^(NSString *savedPath, FlutterError *error) {
+                   if (savedPath != nil) {
+                     pathList[index] = savedPath;
+                   } else {
+                     saveError = error;
+                   }
+                 }];
+    [sendListOperation addDependency:saveOperation];
+    [saveQueue addOperation:saveOperation];
+  }];
 
-/**
- * Creates an NSMutableArray of a certain size filled with NSNull objects.
- *
- * The difference with initWithCapacity is that initWithCapacity still gives an empty array making
- * it impossible to add objects on an index larger than the size.
- *
- * @param size The length of the required array
- * @return NSMutableArray An array of a specified size
- */
-- (NSMutableArray *)createNSMutableArrayWithSize:(NSUInteger)size {
-  NSMutableArray *mutableArray = [[NSMutableArray alloc] initWithCapacity:size];
-  for (int i = 0; i < size; [mutableArray addObject:[NSNull null]], i++)
-    ;
-  return mutableArray;
+  // Schedule the final Flutter callback on the main queue
+  // to be run after all images have been saved.
+  [NSOperationQueue.mainQueue addOperation:sendListOperation];
 }
 
 #pragma mark - UIImagePickerControllerDelegate
@@ -554,7 +574,11 @@ typedef NS_ENUM(NSInteger, ImagePickerClassType) { UIImagePickerClassType, PHPic
     NSNumber *imageQuality = self.callContext.imageQuality;
     NSNumber *desiredImageQuality = [self getDesiredImageQuality:imageQuality];
 
-    PHAsset *originalAsset = [FLTImagePickerPhotoAssetUtil getAssetFromImagePickerInfo:info];
+    PHAsset *originalAsset;
+    if (_callContext.requestFullMetadata) {
+      // Full metadata are available only in PHAsset, which requires gallery permission.
+      originalAsset = [FLTImagePickerPhotoAssetUtil getAssetFromImagePickerInfo:info];
+    }
 
     if (maxWidth != nil || maxHeight != nil) {
       image = [FLTImagePickerImageUtil scaledImage:image

@@ -21,8 +21,10 @@ void main() {
   late InAppPurchaseStoreKitPlatform iapStoreKitPlatform;
 
   setUpAll(() {
-    SystemChannels.platform
-        .setMockMethodCallHandler(fakeStoreKitPlatform.onMethodCall);
+    _ambiguate(TestDefaultBinaryMessengerBinding.instance)!
+        .defaultBinaryMessenger
+        .setMockMethodCallHandler(
+            SystemChannels.platform, fakeStoreKitPlatform.onMethodCall);
   });
 
   setUp(() {
@@ -489,6 +491,38 @@ void main() {
       expect(
           fakeStoreKitPlatform.finishedTransactions.first.payment.quantity, 5);
     });
+
+    test(
+        'buying non consumable with discount, should get purchase objects in the purchase update callback',
+        () async {
+      final List<PurchaseDetails> details = <PurchaseDetails>[];
+      final Completer<List<PurchaseDetails>> completer =
+          Completer<List<PurchaseDetails>>();
+      final Stream<List<PurchaseDetails>> stream =
+          iapStoreKitPlatform.purchaseStream;
+
+      late StreamSubscription<List<PurchaseDetails>> subscription;
+      subscription = stream.listen((List<PurchaseDetails> purchaseDetailsList) {
+        details.addAll(purchaseDetailsList);
+        if (purchaseDetailsList.first.status == PurchaseStatus.purchased) {
+          completer.complete(details);
+          subscription.cancel();
+        }
+      });
+      final AppStorePurchaseParam purchaseParam = AppStorePurchaseParam(
+        productDetails:
+            AppStoreProductDetails.fromSKProduct(dummyProductWrapper),
+        applicationUserName: 'userWithDiscount',
+        discount: dummyPaymentDiscountWrapper,
+      );
+      await iapStoreKitPlatform.buyNonConsumable(purchaseParam: purchaseParam);
+
+      final List<PurchaseDetails> result = await completer.future;
+      expect(result.length, 2);
+      expect(result.first.productID, dummyProductWrapper.productIdentifier);
+      expect(fakeStoreKitPlatform.discountReceived,
+          dummyPaymentDiscountWrapper.toMap());
+    });
   });
 
   group('complete purchase', () {
@@ -539,3 +573,9 @@ void main() {
     });
   });
 }
+
+/// This allows a value of type T or T? to be treated as a value of type T?.
+///
+/// We use this so that APIs that have become non-nullable can still be used
+/// with `!` and `?` on the stable branch.
+T? _ambiguate<T>(T? value) => value;

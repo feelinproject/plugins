@@ -1,3 +1,13 @@
+## 2.1.4
+
+* Updates minimum Flutter version to 3.0.
+* Updates documentation for Android version 8 and below theme compatibility.
+
+## 2.1.3
+
+* Updates minimum Flutter version to 2.10.
+* Removes unused `intl` dependency.
+
 ## 2.1.2
 
 * Fixes avoid_redundant_argument_values lint warnings and minor typos.

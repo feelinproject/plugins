@@ -1,3 +1,16 @@
+## NEXT
+
+* Updates minimum Flutter version to 3.0.
+
+## 5.5.1
+
+* Fixes passing `serverClientId` via the channelled `init` call
+* Updates minimum Flutter version to 2.10.
+
+## 5.5.0
+
+* Adds override for `GoogleSignInPlatform.initWithParams`.
+
 ## 5.4.0
 
 * Adds support for `serverClientId` configuration option.

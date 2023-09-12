@@ -1,3 +1,18 @@
+## NEXT
+
+* Updates example code for `use_build_context_synchronously` lint.
+* Updates minimum Flutter version to 3.0.
+
+## 0.9.2+2
+
+* Improves API docs and examples.
+* Changes XTypeGroup initialization from final to const.
+* Updates minimum Flutter version to 2.10.
+
+## 0.9.2
+
+* Adds an endorsed iOS implementation.
+
 ## 0.9.1
 
 * Adds an endorsed Linux implementation.

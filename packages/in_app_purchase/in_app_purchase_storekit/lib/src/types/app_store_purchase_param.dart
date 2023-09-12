@@ -10,14 +10,12 @@ import '../../store_kit_wrappers.dart';
 class AppStorePurchaseParam extends PurchaseParam {
   /// Creates a new [AppStorePurchaseParam] object with the given data.
   AppStorePurchaseParam({
-    required ProductDetails productDetails,
-    String? applicationUserName,
+    required super.productDetails,
+    super.applicationUserName,
     this.quantity = 1,
     this.simulatesAskToBuyInSandbox = false,
-  }) : super(
-          productDetails: productDetails,
-          applicationUserName: applicationUserName,
-        );
+    this.discount,
+  });
 
   /// Set it to `true` to produce an "ask to buy" flow for this payment in the
   /// sandbox.
@@ -32,4 +30,7 @@ class AppStorePurchaseParam extends PurchaseParam {
 
   /// Quantity of the product user requested to buy.
   final int quantity;
+
+  /// Discount applied to the product. The value is `null` when the product does not have a discount.
+  final SKPaymentDiscountWrapper? discount;
 }

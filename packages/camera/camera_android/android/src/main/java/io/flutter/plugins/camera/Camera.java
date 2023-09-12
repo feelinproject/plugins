@@ -131,8 +131,6 @@ class Camera
 
   /** An additional thread for running tasks that shouldn't block the UI. */
   private HandlerThread backgroundHandlerThread;
-  /** True when backgroundHandlerThread is in the process of being stopped. */
-  private boolean stoppingBackgroundHandlerThread = false;
 
   private CameraDeviceWrapper cameraDevice;
   private CameraCaptureSession captureSession;
@@ -260,8 +258,11 @@ class Camera
 
     MediaRecorderBuilder mediaRecorderBuilder;
 
-    if (Build.VERSION.SDK_INT >= 31) {
-      mediaRecorderBuilder = new MediaRecorderBuilder(getRecordingProfile(), outputFilePath);
+    // TODO(camsim99): Revert changes that allow legacy code to be used when recordingProfile is null
+    // once this has largely been fixed on the Android side. https://github.com/flutter/flutter/issues/119668
+    EncoderProfiles recordingProfile = getRecordingProfile();
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && recordingProfile != null) {
+      mediaRecorderBuilder = new MediaRecorderBuilder(recordingProfile, outputFilePath);
     } else {
       mediaRecorderBuilder = new MediaRecorderBuilder(getRecordingProfileLegacy(), outputFilePath);
     }
@@ -524,6 +525,21 @@ class Camera
     }
   }
 
+  private void startCapture(boolean record, boolean stream) throws CameraAccessException {
+    List<Surface> surfaces = new ArrayList<>();
+    Runnable successCallback = null;
+    if (record) {
+      surfaces.add(mediaRecorder.getSurface());
+      successCallback = () -> mediaRecorder.start();
+    }
+    if (stream) {
+      surfaces.add(imageStreamReader.getSurface());
+    }
+
+    createCaptureSession(
+        CameraDevice.TEMPLATE_RECORD, successCallback, surfaces.toArray(new Surface[0]));
+  }
+
   public void takePicture(@NonNull final Result result) {
     // Only take one picture at a time.
     if (cameraCaptureCallback.getCameraState() != CameraState.STATE_PREVIEW) {
@@ -671,21 +687,11 @@ class Camera
 
   /** Stops the background thread and its {@link Handler}. */
   public void stopBackgroundThread() {
-    if (stoppingBackgroundHandlerThread) {
-      return;
-    }
     if (backgroundHandlerThread != null) {
-      stoppingBackgroundHandlerThread = true;
       backgroundHandlerThread.quitSafely();
-      try {
-        backgroundHandlerThread.join();
-      } catch (InterruptedException e) {
-        dartMessenger.error(flutterResult, "cameraAccess", e.getMessage(), null);
-      }
     }
     backgroundHandlerThread = null;
     backgroundHandler = null;
-    stoppingBackgroundHandlerThread = false;
   }
 
   /** Start capturing a picture, doing autofocus first. */
@@ -743,29 +749,17 @@ class Camera
             dartMessenger.error(flutterResult, errorCode, errorMessage, null));
   }
 
-  public void startVideoRecording(@NonNull Result result) {
-    final File outputDir = applicationContext.getCacheDir();
-    try {
-      captureFile = File.createTempFile("REC", ".mp4", outputDir);
-    } catch (IOException | SecurityException e) {
-      result.error("cannotCreateFile", e.getMessage(), null);
-      return;
+  public void startVideoRecording(
+      @NonNull Result result, @Nullable EventChannel imageStreamChannel) {
+    prepareRecording(result);
+
+    if (imageStreamChannel != null) {
+      setStreamHandler(imageStreamChannel);
     }
-    try {
-      prepareMediaRecorder(captureFile.getAbsolutePath());
-    } catch (IOException e) {
-      recordingVideo = false;
-      captureFile = null;
-      result.error("videoRecordingFailed", e.getMessage(), null);
-      return;
-    }
-    // Re-create autofocus feature so it's using video focus mode now.
-    cameraFeatures.setAutoFocus(
-        cameraFeatureFactory.createAutoFocusFeature(cameraProperties, true));
+
     recordingVideo = true;
     try {
-      createCaptureSession(
-          CameraDevice.TEMPLATE_RECORD, () -> mediaRecorder.start(), mediaRecorder.getSurface());
+      startCapture(true, imageStreamChannel != null);
       result.success(null);
     } catch (CameraAccessException e) {
       recordingVideo = false;
@@ -1085,21 +1079,10 @@ class Camera
 
   public void startPreviewWithImageStream(EventChannel imageStreamChannel)
       throws CameraAccessException {
-    createCaptureSession(CameraDevice.TEMPLATE_RECORD, imageStreamReader.getSurface());
+    setStreamHandler(imageStreamChannel);
+
+    startCapture(false, true);
     Log.i(TAG, "startPreviewWithImageStream");
-
-    imageStreamChannel.setStreamHandler(
-        new EventChannel.StreamHandler() {
-          @Override
-          public void onListen(Object o, EventChannel.EventSink imageStreamSink) {
-            setImageStreamImageAvailableListener(imageStreamSink);
-          }
-
-          @Override
-          public void onCancel(Object o) {
-            imageStreamReader.setOnImageAvailableListener(null, backgroundHandler);
-          }
-        });
   }
 
   /**
@@ -1127,6 +1110,42 @@ class Camera
               }
             }));
     cameraCaptureCallback.setCameraState(CameraState.STATE_PREVIEW);
+  }
+
+  private void prepareRecording(@NonNull Result result) {
+    final File outputDir = applicationContext.getCacheDir();
+    try {
+      captureFile = File.createTempFile("REC", ".mp4", outputDir);
+    } catch (IOException | SecurityException e) {
+      result.error("cannotCreateFile", e.getMessage(), null);
+      return;
+    }
+    try {
+      prepareMediaRecorder(captureFile.getAbsolutePath());
+    } catch (IOException e) {
+      recordingVideo = false;
+      captureFile = null;
+      result.error("videoRecordingFailed", e.getMessage(), null);
+      return;
+    }
+    // Re-create autofocus feature so it's using video focus mode now.
+    cameraFeatures.setAutoFocus(
+        cameraFeatureFactory.createAutoFocusFeature(cameraProperties, true));
+  }
+
+  private void setStreamHandler(EventChannel imageStreamChannel) {
+    imageStreamChannel.setStreamHandler(
+        new EventChannel.StreamHandler() {
+          @Override
+          public void onListen(Object o, EventChannel.EventSink imageStreamSink) {
+            setImageStreamImageAvailableListener(imageStreamSink);
+          }
+
+          @Override
+          public void onCancel(Object o) {
+            imageStreamReader.setOnImageAvailableListener(null, backgroundHandler);
+          }
+        });
   }
 
   private void setImageStreamImageAvailableListener(final EventChannel.EventSink imageStreamSink) {

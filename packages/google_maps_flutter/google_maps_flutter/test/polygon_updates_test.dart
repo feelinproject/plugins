@@ -49,8 +49,12 @@ void main() {
       FakePlatformViewsController();
 
   setUpAll(() {
-    SystemChannels.platform_views.setMockMethodCallHandler(
-        fakePlatformViewsController.fakePlatformViewsMethodHandler);
+    _ambiguate(TestDefaultBinaryMessengerBinding.instance)!
+        .defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          SystemChannels.platform_views,
+          fakePlatformViewsController.fakePlatformViewsMethodHandler,
+        );
   });
 
   setUp(() {
@@ -123,10 +127,10 @@ void main() {
   });
 
   testWidgets('Mutate a polygon', (WidgetTester tester) async {
-    final List<LatLng> _points = <LatLng>[const LatLng(0.0, 0.0)];
+    final List<LatLng> points = <LatLng>[const LatLng(0.0, 0.0)];
     final Polygon p1 = Polygon(
       polygonId: const PolygonId('polygon_1'),
-      points: _points,
+      points: points,
     );
     await tester.pumpWidget(_mapWithPolygons(<Polygon>{p1}));
 
@@ -208,8 +212,7 @@ void main() {
   testWidgets('Update non platform related attr', (WidgetTester tester) async {
     Polygon p1 = const Polygon(polygonId: PolygonId('polygon_1'));
     final Set<Polygon> prev = <Polygon>{p1};
-    p1 = Polygon(
-        polygonId: const PolygonId('polygon_1'), onTap: () => print(2 + 2));
+    p1 = Polygon(polygonId: const PolygonId('polygon_1'), onTap: () {});
     final Set<Polygon> cur = <Polygon>{p1};
 
     await tester.pumpWidget(_mapWithPolygons(prev));
@@ -404,3 +407,9 @@ void main() {
     expect(platformGoogleMap.polygonsToAdd.isEmpty, true);
   });
 }
+
+/// This allows a value of type T or T? to be treated as a value of type T?.
+///
+/// We use this so that APIs that have become non-nullable can still be used
+/// with `!` and `?` on the stable branch.
+T? _ambiguate<T>(T? value) => value;

@@ -1,6 +1,44 @@
-## NEXT
+## 3.1.0
+
+* Adds support to access native `WKWebView`.
+
+## 3.0.5
+
+* Renames Pigeon output files.
+
+## 3.0.4
+
+* Fixes bug that prevented the web view from being garbage collected.
+
+## 3.0.3
+
+* Updates example code for `use_build_context_synchronously` lint.
+
+## 3.0.2
+
+* Updates code for stricter lint checks.
+
+## 3.0.1
+
+* Adds support for retrieving navigation type with internal class.
+* Updates README with details on contributing.
+* Updates pigeon dev dependency to `4.2.13`.
+
+## 3.0.0
+
+* **BREAKING CHANGE** Updates platform implementation to `2.0.0` release of
+  `webview_flutter_platform_interface`. See
+  [webview_flutter](https://pub.dev/packages/webview_flutter/versions/4.0.0) for updated usage.
+* Updates code for `no_leading_underscores_for_local_identifiers` lint.
+
+## 2.9.5
+
+* Updates imports for `prefer_relative_imports`.
+
+## 2.9.4
 
 * Fixes avoid_redundant_argument_values lint warnings and minor typos.
+* Fixes typo in an internal method name, from `setCookieForInsances` to `setCookieForInstances`.
 
 ## 2.9.3
 

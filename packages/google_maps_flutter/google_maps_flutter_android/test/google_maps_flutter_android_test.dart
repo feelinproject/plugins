@@ -25,19 +25,24 @@ void main() {
     required int mapId,
     required Future<dynamic>? Function(MethodCall call) handler,
   }) {
-    maps
-        .ensureChannelInitialized(mapId)
-        .setMockMethodCallHandler((MethodCall methodCall) {
-      log.add(methodCall.method);
-      return handler(methodCall);
-    });
+    final MethodChannel channel = maps.ensureChannelInitialized(mapId);
+    _ambiguate(TestDefaultBinaryMessengerBinding.instance)!
+        .defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      channel,
+      (MethodCall methodCall) {
+        log.add(methodCall.method);
+        return handler(methodCall);
+      },
+    );
   }
 
   Future<void> sendPlatformMessage(
       int mapId, String method, Map<dynamic, dynamic> data) async {
     final ByteData byteData =
         const StandardMethodCodec().encodeMethodCall(MethodCall(method, data));
-    await TestDefaultBinaryMessengerBinding.instance!.defaultBinaryMessenger
+    await _ambiguate(TestDefaultBinaryMessengerBinding.instance)!
+        .defaultBinaryMessenger
         .handlePlatformMessage('plugins.flutter.dev/google_maps_android_$mapId',
             byteData, (ByteData? data) {});
   }
@@ -124,9 +129,10 @@ void main() {
   });
 
   test(
-    'Default widget is AndroidView',
+    'Does not use PlatformViewLink when using TLHC',
     () async {
       final GoogleMapsFlutterAndroid maps = GoogleMapsFlutterAndroid();
+      maps.useAndroidViewSurface = false;
       final Widget widget = maps.buildViewWithConfiguration(1, (int _) {},
           widgetConfiguration: const MapWidgetConfiguration(
               initialCameraPosition:
@@ -150,4 +156,22 @@ void main() {
 
     expect(widget, isA<PlatformViewLink>());
   });
+
+  testWidgets('Defaults to surface view', (WidgetTester tester) async {
+    final GoogleMapsFlutterAndroid maps = GoogleMapsFlutterAndroid();
+
+    final Widget widget = maps.buildViewWithConfiguration(1, (int _) {},
+        widgetConfiguration: const MapWidgetConfiguration(
+            initialCameraPosition:
+                CameraPosition(target: LatLng(0, 0), zoom: 1),
+            textDirection: TextDirection.ltr));
+
+    expect(widget, isA<PlatformViewLink>());
+  });
 }
+
+/// This allows a value of type T or T? to be treated as a value of type T?.
+///
+/// We use this so that APIs that have become non-nullable can still be used
+/// with `!` and `?` on the stable branch.
+T? _ambiguate<T>(T? value) => value;

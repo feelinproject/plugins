@@ -1,3 +1,20 @@
+## NEXT
+
+* Updates minimum Flutter version to 3.0.
+
+## 1.0.12
+
+* Adds compatibility with `intl` 0.18.0.
+
+## 1.0.11
+
+* Fixes issue where failed authentication was failing silently
+
+## 1.0.10
+
+* Updates imports for `prefer_relative_imports`.
+* Updates minimum Flutter version to 2.10.
+
 ## 1.0.9
 
 * Fixes avoid_redundant_argument_values lint warnings and minor typos.

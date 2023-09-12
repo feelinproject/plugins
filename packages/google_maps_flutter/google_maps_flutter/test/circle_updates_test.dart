@@ -26,8 +26,12 @@ void main() {
       FakePlatformViewsController();
 
   setUpAll(() {
-    SystemChannels.platform_views.setMockMethodCallHandler(
-        fakePlatformViewsController.fakePlatformViewsMethodHandler);
+    _ambiguate(TestDefaultBinaryMessengerBinding.instance)!
+        .defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          SystemChannels.platform_views,
+          fakePlatformViewsController.fakePlatformViewsMethodHandler,
+        );
   });
 
   setUp(() {
@@ -180,8 +184,7 @@ void main() {
   testWidgets('Update non platform related attr', (WidgetTester tester) async {
     Circle c1 = const Circle(circleId: CircleId('circle_1'));
     final Set<Circle> prev = <Circle>{c1};
-    c1 = Circle(
-        circleId: const CircleId('circle_1'), onTap: () => print('hello'));
+    c1 = Circle(circleId: const CircleId('circle_1'), onTap: () {});
     final Set<Circle> cur = <Circle>{c1};
 
     await tester.pumpWidget(_mapWithCircles(prev));
@@ -195,3 +198,9 @@ void main() {
     expect(platformGoogleMap.circlesToAdd.isEmpty, true);
   });
 }
+
+/// This allows a value of type T or T? to be treated as a value of type T?.
+///
+/// We use this so that APIs that have become non-nullable can still be used
+/// with `!` and `?` on the stable branch.
+T? _ambiguate<T>(T? value) => value;
